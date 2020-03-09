@@ -61,6 +61,8 @@ public class BluetoothChatService {
     private int mState;
     private int mNewState;
 
+    private boolean mStarted = false;
+
     // Constants that indicate the current connection state
     public static final int STATE_NONE = 0;       // we're doing nothing
     public static final int STATE_LISTEN = 1;     // now listening for incoming connections
@@ -99,12 +101,20 @@ public class BluetoothChatService {
         return mState;
     }
 
+    public void startIfNecessary() {
+        if (mStarted) {
+            return;
+        }
+        start();
+    }
+
     /**
      * Start the chat service. Specifically start AcceptThread to begin a
      * session in listening (server) mode. Called by the Activity onResume()
      */
     public synchronized void start() {
         Log.d(TAG, "start");
+        mStarted = true;
 
         // Cancel any thread attempting to make a connection
         if (mConnectThread != null) {
