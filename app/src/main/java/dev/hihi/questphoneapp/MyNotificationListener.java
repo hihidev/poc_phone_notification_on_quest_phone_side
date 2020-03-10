@@ -1,15 +1,25 @@
 package dev.hihi.questphoneapp;
 
+import android.app.Notification;
 import android.app.Service;
 import android.bluetooth.BluetoothAdapter;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
+import android.os.SystemClock;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
 import android.util.Log;
 import android.widget.Toast;
+
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import java.lang.reflect.Field;
 
 public class MyNotificationListener extends NotificationListenerService {
 
@@ -75,19 +85,66 @@ public class MyNotificationListener extends NotificationListenerService {
         super.onCreate();
         if (sBluetoothChatService == null) {
             sBluetoothChatService = new BluetoothChatService(this, mHandler);
-            if (BluetoothAdapter.getDefaultAdapter().isEnabled()) {
-                sBluetoothChatService.start();
-            }
+            new Thread() {
+                public void run() {
+                    while (true) {
+                        if (BluetoothAdapter.getDefaultAdapter().isEnabled()) {
+                            sBluetoothChatService.start();
+                            return;
+                        }
+                        SystemClock.sleep(3000);
+                    }
+                }
+            }.start();
         }
     }
 
     @Override
     public void onNotificationPosted(StatusBarNotification sbn) {
         Log.i(TAG, "onNotificationPosted: " + sbn.getPackageName());
+        JSONObject json = new JSONObject();
+        try {
+            json.put("package_name", sbn.getPackageName());
+            json.put("title", getTitle(sbn.getNotification()));
+            json.put("text", getText(sbn.getNotification()));
+            Log.i(TAG, json.toString());
+            sendMessage(json.toString());
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
+
+    }
+
+    private String getTitle(Notification notification) {
+        return notification.extras.getString(Notification.EXTRA_TITLE);
+    }
+
+    private String getText(Notification notification) {
+        CharSequence message = notification.extras.getCharSequence(Notification.EXTRA_TEXT);
+        if (message == null)
+            message = notification.extras.getCharSequence(Notification.EXTRA_SUMMARY_TEXT);
+        return (message == null) ? "" : message.toString();
     }
 
     @Override
     public void onNotificationRemoved(StatusBarNotification sbn) {
         Log.i(TAG, "onNotificationRemoved: " + sbn.getPackageName());
     }
+
+    private void sendMessage(String message) {
+        // Check that we're actually connected before trying anything
+        if (sBluetoothChatService.getState() != BluetoothChatService.STATE_CONNECTED) {
+            Log.i(TAG, "no connected, skip send msg: "+ message);
+            return;
+        }
+
+        // Check that there's actually something to send
+        if (message.length() > 0) {
+            // Get the message bytes and tell the BluetoothChatService to write
+            byte[] send = message.getBytes();
+            sBluetoothChatService.write(send);
+            Log.i(TAG, "Msg sent: " + send);
+        }
+    }
+
 }
