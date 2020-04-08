@@ -3,10 +3,9 @@ package dev.hihi.questphoneapp;
 import android.app.Notification;
 import android.app.Service;
 import android.bluetooth.BluetoothAdapter;
+import android.content.ComponentName;
 import android.content.Intent;
-import android.content.pm.ApplicationInfo;
-import android.content.pm.PackageManager;
-import android.os.Bundle;
+import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
@@ -19,7 +18,7 @@ import android.widget.Toast;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.lang.reflect.Field;
+import java.util.Set;
 
 public class MyNotificationListener extends NotificationListenerService {
 
@@ -101,12 +100,37 @@ public class MyNotificationListener extends NotificationListenerService {
 
     @Override
     public void onNotificationPosted(StatusBarNotification sbn) {
-        Log.i(TAG, "onNotificationPosted: " + sbn.getPackageName());
+        String packageName = sbn.getPackageName();
+        String title = getTitle(sbn.getNotification());
+        String text = getText(sbn.getNotification());
+        Log.d(TAG, "extra: " + sbn.getNotification().extras);
+        int id = sbn.getId();
+        String tag = sbn.getTag();
+
+        if ((sbn.getNotification().flags & Notification.FLAG_GROUP_SUMMARY) != 0) {
+            Log.d(TAG, "Ignore the notification FLAG_GROUP_SUMMARY");
+            return;
+        }
+
+        Log.i(TAG, "onNotificationPosted: " + packageName);
+        Set<String> blacklist = BlacklistUtils.getBlacklist(this);
+        if (blacklist.contains(packageName)) {
+            Log.i(TAG, "Skip package " + packageName + " in blacklist");
+            return;
+        }
+        if (BlacklistUtils.hasBlacklistKeywords(text)) {
+            Log.i(TAG, "Skip text " + text + " in blacklist");
+            return;
+        }
+
         JSONObject json = new JSONObject();
         try {
-            json.put("package_name", sbn.getPackageName());
-            json.put("title", getTitle(sbn.getNotification()));
-            json.put("text", getText(sbn.getNotification()));
+            json.put("action", "post");
+            json.put("package_name", packageName);
+            json.put("title", title);
+            json.put("text", text);
+            json.put("id", id);
+            json.put("tag", tag);
             Log.i(TAG, json.toString());
             sendMessage(json.toString());
         } catch (JSONException e) {
@@ -120,7 +144,9 @@ public class MyNotificationListener extends NotificationListenerService {
     }
 
     private String getText(Notification notification) {
-        CharSequence message = notification.extras.getCharSequence(Notification.EXTRA_TEXT);
+        CharSequence message = notification.extras.getCharSequence(Notification.EXTRA_BIG_TEXT);
+        if (message == null)
+            message = notification.extras.getCharSequence(Notification.EXTRA_TEXT);
         if (message == null)
             message = notification.extras.getCharSequence(Notification.EXTRA_SUMMARY_TEXT);
         return (message == null) ? "" : message.toString();
@@ -129,9 +155,24 @@ public class MyNotificationListener extends NotificationListenerService {
     @Override
     public void onNotificationRemoved(StatusBarNotification sbn) {
         Log.i(TAG, "onNotificationRemoved: " + sbn.getPackageName());
+        String packageName = sbn.getPackageName();
+        int id = sbn.getId();
+        String tag = sbn.getTag();
+
+        JSONObject json = new JSONObject();
+        try {
+            json.put("action", "remove");
+            json.put("package_name", packageName);
+            json.put("id", id);
+            json.put("tag", tag);
+            Log.i(TAG, json.toString());
+            sendMessage(json.toString());
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
     }
 
-    private void sendMessage(String message) {
+    public static void sendMessage(String message) {
         // Check that we're actually connected before trying anything
         if (sBluetoothChatService.getState() != BluetoothChatService.STATE_CONNECTED) {
             Log.i(TAG, "no connected, skip send msg: "+ message);

@@ -516,10 +516,18 @@ public class BluetoothChatService {
         /**
          * Write to the connected OutStream.
          *
-         * @param buffer The bytes to write
+         * @param buf The bytes to write
          */
-        public void write(byte[] buffer) {
+        public void write(byte[] buf) {
+            if (buf.length > 4096 - 2) {
+                Log.e(TAG, "Too long, buf.length: " + buf.length);
+                return;
+            }
             try {
+                byte[] buffer = new byte[4096];
+                buffer[0] = (byte) (buf.length / 256);
+                buffer[1] = (byte) (buf.length % 256);
+                System.arraycopy(buf, 0, buffer, 2, Math.min(4096 - 2, buf.length));
                 mmOutStream.write(buffer);
 
                 // Share the sent message back to the UI Activity
